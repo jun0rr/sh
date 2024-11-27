@@ -43,7 +43,7 @@ function padLeft() {
 }
 
 
-VERSION="202411.03"
+VERSION="202411.04"
 
 function printHelp() {
 	padCenter 38 '-'
@@ -51,7 +51,7 @@ function printHelp() {
 	padCenter 38 ' ' "Version: $VERSION"
 	padCenter 38 ' ' 'Author: F6036477 - Juno'
 	padCenter 38 '-'
-	line="Usage: hide.sh [-n <num>] [-e] [-s] [-o <file>] [input]"
+	line="Usage: hide.sh [-n <num>] [-e] [-s] [-u] [-o <file>] [input]"
         padLeft $((${#line}+2)) ' ' "$line"
 	line="When [input] is not provided, content is readed from stdin"
         padLeft $((${#line}+4)) ' ' "$line"
@@ -61,9 +61,11 @@ function printHelp() {
         padLeft $((${#line}+4)) ' ' "$line"
         line="-e/--encrypt ...: Encrypt input script with random password"
         padLeft $((${#line}+4)) ' ' "$line"
-        line="-s/--src .......: Source input script instead of executing"
+        line="-s/--src .......: Call 'source' on script instead of executing"
         padLeft $((${#line}+4)) ' ' "$line"
         line="-o/--out .......: Output file (default stdout)"
+        padLeft $((${#line}+4)) ' ' "$line"
+        line="-u/--unhide ....: Unhide obfuscated content"
         padLeft $((${#line}+4)) ' ' "$line"
         line="-h/--help ......: Print this help text"
         padLeft $((${#line}+4)) ' ' "$line"
@@ -81,6 +83,7 @@ OPTO=0
 ARGO=""
 OPTS=0
 OPTE=0
+OPTU=0
 INPUT=""
 
 
@@ -97,7 +100,7 @@ for ((i=0; i<olen; i++)); do
                         i=$((i+1))
                         ARGN=${opts[$i]}
                         ;;
-                -e | --enncrypt)
+                -e | --encrypt)
                         OPTE=1
                         ;;
                 -s | --src)
@@ -112,6 +115,9 @@ for ((i=0; i<olen; i++)); do
                         fi
                         i=$((i+1))
                         ARGO=${opts[$i]}
+                        ;;
+                -u | --unhide)
+                        OPTU=1
                         ;;
                 -h | --help)
                         printHelp
@@ -135,50 +141,108 @@ for ((i=0; i<olen; i++)); do
         esac
 done
 
-out='df=/tmp/$(uuidgen | base64 | sed "s/[=|\/|\+]//g");'
-c=""
-if [ -e "$INPUT" ]; then
-	c=$(cat $INPUT | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-elif [ ! -z "$INPUT" ]; then
-	c=$(echo $INPUT | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-else
-	c=$(timeout 3s cat -)
-	if [ -z "$c" ]; then
-		printHelp
-		echo "[ERROR] Nothig readed from stdin"
-		exit 4
+if [ $OPTU -eq 1 -a $((OPTN+OPTS+OPTE)) -gt 0 ]; then
+	printHelp
+	echo "[ERROR] Exclusive option -u/--unhide can not be used with -n|-s|-e"
+	exit 4
+fi
+
+function parseInput() {
+        if [ -e "$INPUT" ]; then
+                c=$(cat $INPUT | sed ':a;N;$!ba;s/\n/_NL_/g')
+        elif [ ! -z "$INPUT" ]; then
+                c=$(echo "$INPUT" | sed ':a;N;$!ba;s/\n/_NL_/g')
+        else
+                c=$(timeout 3s cat - | sed ':a;N;$!ba;s/\n/_NL_/g')
+                if [ -z "$c" ]; then
+                        printHelp
+                        echo "[ERROR] Nothig readed from stdin"
+                        exit 4
+                fi
+        fi
+}
+
+function encodeInput() {
+	parseInput
+	if [[ ! $c =~ ^#!/.* ]]; then
+		c='#!/bin/bash_NL_'$c
 	fi
-	c=$(echo $c | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-fi
+	c=$(echo $c | sed 's/_NL_/\n/g' | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
+}
 
-if [ $OPTE -eq 1 ]; then
-	pname=$(openssl rand -base64 8 | sed 's/[=|\/|\+]//g')
-	pname='p'$pname
-	pass=$(openssl rand -base64 32 | sed 's/[=|\/|\+]//g')
-	epass=$(echo "$pname=$pass;" | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-	out=$out'eval $(echo "'$epass'" | sed "s/ /\n/g" | base64 -d | gzip -d);'
-	c=$(echo "$c" | openssl enc -aes-256-cbc -salt -pass "pass:$pass" | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-	out=$out'echo "'$c'" | sed "s/ /\n/g" | base64 -d | openssl enc -d -aes-256-cbc -pass "pass:$'$pname'" | sed "s/ /\n/g" | base64 -d | gzip -d > $df;'
-else
-	out=$out'echo "'$c'" | sed "s/ /\n/g" | base64 -d | gzip -d > $df;'
-fi
+function encryptInput() {
+        pname=$(openssl rand -base64 8 | sed 's/[=|\/|\+]//g')
+        pname='p'$pname
+        pass=$(openssl rand -base64 32 | sed 's/[=|\/|\+]//g')
+        epass=$(echo "$pname=$pass" | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
+        out=$out'eval $(echo "'$epass'" | sed "s/ /\n/g" | base64 -d | gzip -d);'
+        c=$(echo "$c" | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "pass:$pass" | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
+        out=$out'echo "'$c'" | sed "s/ /\n/g" | base64 -d | openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:$'$pname'" | sed "s/ /\n/g" | base64 -d | gzip -d > $df;'
+}
 
-out=$out'chmod +x $df;'
-if [ $OPTS -eq 1 ]; then
-	out=$out'source $df;'
+function formatOutput() {
+	out=$out'chmod +x $df;'
+	out=$out'echo "------ $df ------"; cat $df; echo "------ $df ------";'
+	if [ $OPTS -eq 1 ]; then
+        	out=$out'source $df;'
+	else
+        	out=$out'$df $@;'
+	fi
+	out=$out'rm $df'
+	for ((i=0; i<ARGN; i++)); do
+        	out=$(echo "$out" | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
+	        out=$(echo 'eval $(echo "'$out'" | sed "s/ /\n/g" | base64 -d | gzip -d)')
+	done
+}
+
+function decodeInput() {
+	parseInput
+	if [[ ! $c =~ ^eval.* && ! $c =~ ^#!/.+_NL_eval.* ]]; then
+		printHelp
+		echo "[ERROR] Input is not obfuscated"
+		exit 5
+	fi
+	c=$(echo "$c" | sed -E 's|^#!/.+_NL_||g')
+	while [[ $c =~ ^eval.+ ]]; do
+		c=$(echo $c | sed 's/eval $(echo "//g' | sed 's/".*//g')
+		c=$(echo $c | sed "s/ /\n/g" | base64 -d | gzip -d)
+	done
+	# if is encrypted
+	if [[ $c =~ .*pass:$p.{8,11}.* ]]; then
+		# get password
+		pass=$(echo $c | sed -E 's/df=.*\$\(echo "//g' | sed -E 's|^([A-Za-z0-9/+=]{76}\s[A-Za-z0-9/+=]{15,28}).*|\1|' | sed "s/ /\n/g" | base64 -d | gzip -d | sed -E 's/^p.{8,11}=//g')
+		# get encrypted content
+		c=$(echo $c | sed 's/^.*);echo //g' | sed -E 's|^("[A-Za-z0-9/+=]+(\s[A-Za-z0-9/+=]+)+").*|\1|' | sed 's/"//g')
+		# decrypt content
+		c=$(echo $c | sed "s/ /\n/g" | base64 -d | openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:$pass" | sed "s/ /\n/g" | base64 -d | gzip -d | sed ':a;N;$!ba;s/\n/_NL_/g')
+	else
+		c=$(echo $c | sed -E 's|^.+("[A-Za-z0-9/+=]+(\s[A-Za-z0-9/+=]+)+").*|\1|' | sed 's/"//g' | sed "s/ /\n/g" | base64 -d | gzip -d | sed ':a;N;$!ba;s/\n/_NL_/g')
+	fi
+	out="$c"
+}
+
+out='df=/tmp/$(uuidgen | sed "s/-//g");'
+c=""
+
+if [ $OPTU -eq 1 ]; then
+	decodeInput
 else
-	out=$out'$df $@;'
+	encodeInput
+	if [ $OPTE -eq 1 ]; then
+		encryptInput
+	else
+		out=$out'echo "'$c'" | sed "s/ /\n/g" | base64 -d | gzip -d > $df;'
+	fi
+	formatOutput
 fi
-out=$out'rm $df'
-for ((i=0; i<ARGN; i++)); do
-        out=$(echo "$out" | gzip | base64 | tr '\n' ' ' | sed -r 's/\s$//g')
-        out=$(echo 'eval $(echo "'$out'" | sed "s/ /\n/g" | base64 -d | gzip -d)')
-done
 
 if [ $OPTO -eq 1 ]; then
-	echo '#!/bin/bash' > $ARGO
-	echo $out >> $ARGO
+	echo -n "" > $ARGO
+	if [[ ! $out =~ ^#!/.+ ]]; then
+		echo '#!/bin/bash' >> $ARGO
+	fi
+	echo $out | sed 's/_NL_/\n/g' >> $ARGO
 else
-	echo $out
+	echo $out | sed 's/_NL_/\n/g'
 fi
 
