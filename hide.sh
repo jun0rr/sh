@@ -43,7 +43,7 @@ function padLeft() {
 }
 
 
-VERSION="202411.04"
+VERSION="202411.05"
 
 function printHelp() {
 	padCenter 38 '-'
@@ -51,23 +51,23 @@ function printHelp() {
 	padCenter 38 ' ' "Version: $VERSION"
 	padCenter 38 ' ' 'Author: F6036477 - Juno'
 	padCenter 38 '-'
-	line="Usage: hide.sh [-n <num>] [-e] [-s] [-u] [-o <file>] [input]"
+	line="Usage: hide.sh [-h] [-o <file>] (-u | [-n <num>] [-e] [-s]) [input]"
         padLeft $((${#line}+2)) ' ' "$line"
 	line="When [input] is not provided, content is readed from stdin"
         padLeft $((${#line}+4)) ' ' "$line"
 	line="Options:"
         padLeft $((${#line}+2)) ' ' "$line"
-        line="-n/--num .......: Number of iterations (default=1)"
-        padLeft $((${#line}+4)) ' ' "$line"
         line="-e/--encrypt ...: Encrypt input script with random password"
         padLeft $((${#line}+4)) ' ' "$line"
-        line="-s/--src .......: Call 'source' on script instead of executing"
+        line="-h/--help ......: Print this help text"
+        padLeft $((${#line}+4)) ' ' "$line"
+        line="-n/--num .......: Number of iterations (default=1)"
         padLeft $((${#line}+4)) ' ' "$line"
         line="-o/--out .......: Output file (default stdout)"
         padLeft $((${#line}+4)) ' ' "$line"
-        line="-u/--unhide ....: Unhide obfuscated content"
+        line="-s/--src .......: Call 'source' on script instead of executing"
         padLeft $((${#line}+4)) ' ' "$line"
-        line="-h/--help ......: Print this help text"
+        line="-u/--unhide ....: Unhide obfuscated content"
         padLeft $((${#line}+4)) ' ' "$line"
         line="-v/--version ...: Print version"
         padLeft $((${#line}+4)) ' ' "$line"
@@ -143,7 +143,7 @@ done
 
 if [ $OPTU -eq 1 -a $((OPTN+OPTS+OPTE)) -gt 0 ]; then
 	printHelp
-	echo "[ERROR] Exclusive option -u/--unhide can not be used with -n|-s|-e"
+	echo "[ERROR] Option -u/--unhide can not be used with -n|-s|-e"
 	exit 4
 fi
 
