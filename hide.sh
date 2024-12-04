@@ -182,7 +182,7 @@ function encryptInput() {
 
 function formatOutput() {
 	out=$out'chmod +x $df;'
-	out=$out'echo "------ $df ------"; cat $df; echo "------ $df ------";'
+	#out=$out'echo "------ $df ------"; cat $df; echo "------ $df ------";'
 	if [ $OPTS -eq 1 ]; then
         	out=$out'source $df;'
 	else
